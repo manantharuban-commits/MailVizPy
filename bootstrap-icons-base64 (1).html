@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Icon Base64 Exporter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: settings rail on the left, live transparent-background preview on the right; stacks on phones */
+:root {
+  --bg: #f4f5f8; --panel: #ffffff; --fg: #1b1f2a; --muted: #5d6475; --line: #dde0e8;
+  --accent: #3b5bdb; --accent-fg: #ffffff; --ok: #2b8a3e; --warn: #c2410c;
+  --tag-o: #0f6cbd; --tag-p: #c43e1c; --chk-a: #8a91a3; --chk-b: #626a7d;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12151c; --panel: #1a1e27; --fg: #e6e8ee; --muted: #9aa1b2; --line: #2b313d;
+  --accent: #748ffc; --accent-fg: #0d1020; --ok: #69db7c; --warn: #ffa94d; --tag-o: #6cb8f6; --tag-p: #ff9a7a; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #12151c; --panel: #1a1e27; --fg: #e6e8ee; --muted: #9aa1b2; --line: #2b313d;
+  --accent: #748ffc; --accent-fg: #0d1020; --ok: #69db7c; --warn: #ffa94d; --tag-o: #6cb8f6; --tag-p: #ff9a7a; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px; }
+.wrap { max-width: 1280px; margin: 0 auto; display: grid; gap: 20px; }
+header h1 { font-size: 1.6rem; font-weight: 600; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 75ch; }
+.layout { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 16px; min-width: 0; }
+.label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.field { display: grid; gap: 6px; min-width: 0; }
+select, input[type=text], input[type=number], input[type=file] { width: 100%; font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.row > .field { flex: 1 1 100px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.seg.two { grid-template-columns: repeat(2, 1fr); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { padding: 8px 6px; text-align: center; cursor: pointer; border-right: 1px solid var(--line); font-weight: 500; display: flex; gap: 6px; justify-content: center; align-items: center; }
+.seg label:last-child { border-right: 0; }
+.seg label:has(input:checked) { background: var(--accent); color: var(--accent-fg); }
+.seg label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: -3px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); display: inline-block; }
+.colors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+input[type=color] { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); padding: 2px; cursor: pointer; }
+.check { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+button { font: inherit; font-weight: 600; border-radius: 6px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.link { border: 0; background: none; padding: 0; color: var(--accent); font-weight: 500; font-size: 12px; }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dl { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .15s; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); min-height: 1.5em; overflow-wrap: anywhere; white-space: pre-line; }
+.status.ok { color: var(--ok); } .status.err { color: var(--warn); }
+
+/* framework picker */
+.fw-head { display: grid; gap: 4px; }
+.fw-head > span:last-child { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; color: var(--muted); }
+.fw { display: grid; gap: 2px; max-height: 380px; overflow-y: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px; background: var(--bg); }
+.fw .grp { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 6px 6px 2px; font-weight: 600; }
+.fw label { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; padding: 5px 6px; border-radius: 4px; cursor: pointer; }
+.fw label:hover { background: var(--panel); }
+.fw label { align-items: start; }
+.fw input { margin-top: 3px; }
+.fwn { display: grid; gap: 1px; min-width: 0; }
+.fwt { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; font-weight: 500; }
+.hint { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.tag { font-style: normal; font-size: 10px; font-weight: 600; letter-spacing: .03em; padding: 0 6px; border-radius: 999px; line-height: 16px; border: 1px solid; }
+.tag.o { color: var(--tag-o); border-color: var(--tag-o); }
+.tag.p { color: var(--tag-p); border-color: var(--tag-p); }
+.legend { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: 11px; color: var(--muted); }
+.fw small { font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.badge { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; padding: 4px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.badge .chk { width: 14px; height: 14px; border-radius: 3px; background: repeating-conic-gradient(var(--chk-a) 0 25%, var(--chk-b) 0 50%) 0 0 / 7px 7px; }
+
+.stats { display: flex; gap: 22px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.stats b { display: block; font-size: 1.25rem; font-weight: 600; }
+.stats span { color: var(--muted); font-size: 12px; }
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; }
+.toolbar .field { flex: 1 1 160px; }
+.toolbar .field.bgpick { flex: 0 1 220px; }
+.bgopts { display: flex; gap: 6px; align-items: center; }
+.bgopts button { width: 30px; height: 30px; padding: 0; border-radius: 6px; flex: none; }
+.bgopts button[aria-pressed=true] { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bgopts input[type=color] { width: 44px; flex: none; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(122px, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: grid; min-width: 0; }
+.tile .pair { display: grid; grid-template-columns: 1fr 1fr; background: var(--tilebg); }
+.tile .pair button { border: 0; border-radius: 0; padding: 14px 0; display: grid; place-items: center; background: transparent; }
+.tile .pair button + button { border-left: 1px dashed rgba(127,127,127,.35); }
+.tile .pair button:hover { background: rgba(127,127,127,.18); }
+.tile .pair img { width: 24px; height: 24px; }
+.tile .name { font-family: var(--mono); font-size: 11px; padding: 6px 8px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-top: 1px solid var(--line); }
+.tile .name b { color: var(--fg); font-weight: 500; }
+.grid.checker { --tilebg: repeating-conic-gradient(var(--chk-a) 0 25%, var(--chk-b) 0 50%) 0 0 / 12px 12px; }
+.empty { color: var(--muted); padding: 40px 10px; text-align: center; border: 1px dashed var(--line); border-radius: 8px; grid-column: 1 / -1; }
+.note { font-size: 12px; color: var(--muted); }
+code { font-family: var(--mono); font-size: 12px; }
+.toast { position: fixed; bottom: max(20px, env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 14px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+.toast.show { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Icon Base64 Exporter</h1>
+    <p>Choose any free icon frameworks and export every icon as Base64 in a white and a dark variant, as CSV or JSON. Every icon has a transparent background, so it sits on any background colour. The white set is for dark backgrounds and the dark set is for light ones. Icon data comes live from the jsDelivr API (Iconify open-source sets).</p>
+  </header>
+
+  <div class="layout">
+    <section class="panel" aria-label="Export settings">
+      <div class="field">
+        <div class="fw-head"><span class="label">Frameworks</span>
+          <span><button class="link" id="fwO" type="button">Best for Outlook</button> · <button class="link" id="fwP" type="button">Best for PPT</button> · <button class="link" id="fwAll" type="button">All</button> · <button class="link" id="fwNone" type="button">None</button></span></div>
+        <div class="legend"><em class="tag o">Outlook</em> solid shapes that stay crisp as small PNGs <em class="tag p">PPT</em> fill-based icons that recolour cleanly in slides</div>
+        <div class="fw" id="fw"></div>
+        <span class="note" id="fwSel"></span>
+      </div>
+
+      <div class="field">
+        <span class="label">Variants</span>
+        <div class="seg" role="radiogroup" aria-label="Variants">
+          <label><input type="radio" name="variant" value="both" checked>Both</label>
+          <label><input type="radio" name="variant" value="white"><i class="sw" style="background:#fff"></i>White</label>
+          <label><input type="radio" name="variant" value="dark"><i class="sw" style="background:#212529"></i>Dark</label>
+        </div>
+      </div>
+
+      <div class="colors">
+        <div class="field"><label class="label" for="cWhite">White icon colour</label><input type="color" id="cWhite" value="#ffffff"></div>
+        <div class="field"><label class="label" for="cDark">Dark icon colour</label><input type="color" id="cDark" value="#212529"></div>
+      </div>
+
+      <div class="field">
+        <span class="label">Image format</span>
+        <div class="seg two" role="radiogroup" aria-label="Image format">
+          <label><input type="radio" name="fmt" value="png" checked>PNG</label>
+          <label><input type="radio" name="fmt" value="svg">SVG</label>
+        </div>
+        <span class="note">Both formats keep a transparent background. Use PNG for Outlook desktop, because its Word rendering engine does not display SVG.</span>
+      </div>
+
+      <div class="row">
+        <div class="field"><label class="label" for="size">Size (px)</label><input type="number" id="size" value="16" min="8" max="256"></div>
+        <div class="field"><label class="label" for="scale">PNG scale</label>
+          <select id="scale"><option value="1">1×</option><option value="2" selected>2× (retina)</option><option value="3">3×</option></select></div>
+      </div>
+
+      <div class="row">
+        <div class="field"><label class="label" for="dlN">Parallel downloads</label>
+          <select id="dlN"><option value="1">1</option><option value="4">4</option><option value="6" selected>6</option><option value="10">10</option><option value="16">16</option></select></div>
+        <div class="field"><label class="label" for="threads">PNG worker threads</label>
+          <select id="threads"></select></div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="prefix" checked> Include <code>data:</code> URI prefix</label>
+      <label class="check"><input type="checkbox" id="rawsvg"> Also include coloured SVG markup</label>
+      <label class="check"><input type="checkbox" id="aliases"> Include alias names (duplicates)</label>
+
+      <button class="primary" id="build" type="button">Fetch &amp; encode icons</button>
+      <div class="bar"><i id="prog"></i></div>
+      <div class="status" id="status">Pick frameworks, then press Fetch &amp; encode.</div>
+
+      <div class="dl">
+        <button id="dlCsv" type="button" disabled>Download CSV</button>
+        <button id="dlJson" type="button" disabled>Download JSON</button>
+      </div>
+
+      <div class="field">
+        <label class="label" for="localFiles">Offline: load icons.json files</label>
+        <input type="file" id="localFiles" accept=".json,application/json" multiple>
+        <span class="note">For networks that block CDNs. Get the file with <code>npm pack @iconify-json/bi</code> (it is in <code>package/icons.json</code>) or download it from <code>github.com/iconify/icon-sets</code> → <code>json/bi.json</code>.</span>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Preview">
+      <div class="stats">
+        <div><b id="sIcons">–</b><span>icons</span></div>
+        <div><b id="sSets">–</b><span>frameworks</span></div>
+        <div><b id="sSize">–</b><span>est. CSV size</span></div>
+        <span class="badge"><i class="chk"></i>Transparent background</span>
+      </div>
+      <div class="toolbar">
+        <div class="field"><label class="label" for="q">Search</label><input type="text" id="q" placeholder="arrow, chart, mail…"></div>
+        <div class="field"><label class="label" for="fFilter">Framework</label><select id="fFilter"><option value="">All loaded</option></select></div>
+        <div class="field bgpick"><span class="label">Test on background</span>
+          <div class="bgopts" id="bgopts">
+            <button type="button" data-bg="checker" aria-pressed="true" title="Checkerboard (shows transparency)" style="background:repeating-conic-gradient(#8a91a3 0 25%,#626a7d 0 50%) 0 0/8px 8px"></button>
+            <button type="button" data-bg="#ffffff" aria-pressed="false" title="White" style="background:#ffffff"></button>
+            <button type="button" data-bg="#1b1f2a" aria-pressed="false" title="Dark" style="background:#1b1f2a"></button>
+            <button type="button" data-bg="#db0011" aria-pressed="false" title="Red" style="background:#db0011"></button>
+            <input type="color" id="bgCustom" value="#2f9e44" aria-label="Custom background colour" title="Custom colour">
+          </div></div>
+      </div>
+      <div class="grid checker" id="grid"><div class="empty">Icons appear here after you press <b>Fetch &amp; encode icons</b>. Each tile shows the white variant on the left and the dark variant on the right. Click either half to copy its Base64.</div></div>
+      <span class="note" id="shown"></span>
+    </section>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// Free, monochrome icon sets packaged by Iconify (@iconify-json/<prefix>) on npm, served via jsDelivr
+// [prefix, name, icon count (npm, Oct 2026), best-for tags, style, hint]
+// O = best for Outlook email (solid shapes, crisp as small PNGs), P = best for PowerPoint (fill-based SVG, recolours cleanly)
+const SETS = [
+  ['General UI', [
+    ['bi', 'Bootstrap Icons', 2078, 'O', 'Solid + outline', 'Drawn on a 16px grid; use the -fill variants. Sharpest choice at email sizes.'],
+    ['lucide', 'Lucide', 1890, '', 'Outline (strokes)', 'Clean 2px strokes. Fine in slides; looks faint below 24px in Outlook.'],
+    ['tabler', 'Tabler Icons', 6238, '', 'Mostly outline', 'Large stroke-based set. Use 24px or larger in email.'],
+    ['feather', 'Feather', 286, '', 'Outline (strokes)', 'Small minimal set. Avoid small email sizes.'],
+    ['heroicons', 'Heroicons', 1288, 'P', 'Outline + solid', 'Outline, solid and 20px mini styles. The solid style works in both.'],
+    ['ph', 'Phosphor (all weights)', 9072, 'P', '6 weights', 'Thin to bold, fill and duotone in one family. Strong for executive decks.'],
+    ['ri', 'Remix Icon', 3188, 'OP', 'Line + fill pairs', 'Every icon in line and fill versions. Use -fill for email, either for slides.'],
+    ['iconoir', 'Iconoir', 1671, '', 'Outline (strokes)', 'Elegant outline style for slides; too thin for email.'],
+    ['mingcute', 'MingCute', 3320, 'P', 'Line + fill', 'Rounded, friendly style for modern decks.'],
+    ['solar', 'Solar', 8706, 'P', 'Bold, linear, duotone', 'Several weights including bold and duotone. Big slide visuals.'],
+    ['eva', 'Eva Icons', 490, '', 'Outline + fill', 'Small set with matching outline and fill pairs.'],
+    ['akar-icons', 'Akar Icons', 454, '', 'Outline (strokes)', 'Rounded strokes, small set.'],
+    ['majesticons', 'Majesticons', 760, '', 'Line + solid', 'Mostly strokes; the solid versions are usable in email.']]],
+  ['Font Awesome Free', [
+    ['fa6-solid', 'Font Awesome 6 Solid', 1402, 'O', 'Solid', 'Heavy, simple shapes that read clearly at 14–16px. Reliable in email.'],
+    ['fa6-regular', 'Font Awesome 6 Regular', 163, '', 'Outline', 'The free outline subset is small.'],
+    ['fa6-brands', 'Font Awesome 6 Brands', 495, '', 'Logos', 'Brand logos. Follow each brand’s usage rules.'],
+    ['la', 'Line Awesome', 1544, '', 'Line', 'Font Awesome names in a lighter line style.']]],
+  ['Material & platform', [
+    ['mdi', 'Material Design Icons', 7447, 'O', 'Solid', 'Filled shapes on a 24px grid with very wide coverage. Good in email.'],
+    ['ic', 'Google Material Icons', 10955, 'O', '5 styles', 'Baseline, outlined, round, sharp and two-tone. Baseline is bold at 16–20px.'],
+    ['material-symbols', 'Google Material Symbols', 15728, 'P', 'Outline + fill', 'Google’s newest set. Neutral and consistent for decks.'],
+    ['fluent', 'Microsoft Fluent UI', 19900, 'P', 'Regular + filled', 'Microsoft’s own Office icons. Looks native in PowerPoint.'],
+    ['carbon', 'IBM Carbon', 2631, 'P', 'Line', '32px grid, corporate tone. Suits data and finance slides.'],
+    ['octicon', 'GitHub Octicons', 774, 'O', 'Solid line', '16px and 24px grids, crisp when small. Developer topics.'],
+    ['ion', 'Ionicons', 1357, '', 'Outline, filled, sharp', 'Mixed styles; pick filled names for email.']]],
+  ['Boxicons', [
+    ['bx', 'Boxicons Regular', 814, '', 'Outline', 'Outline style.'],
+    ['bxs', 'Boxicons Solid', 665, 'O', 'Solid', 'Bold solid shapes that stay readable at small sizes.'],
+    ['bxl', 'Boxicons Logos', 295, '', 'Logos', 'Brand logos.']]],
+  ['Brand logos', [['simple-icons', 'Simple Icons (brands)', 3466, '', 'Logos', 'Over 3,400 single-colour brand logos.']]]
+];
+const DEFAULT_ON = ['bi'];
+const API = p => `https://data.jsdelivr.com/v1/packages/npm/@iconify-json/${p}/resolved?specifier=latest`;
+const CDN = (p, v, f) => `https://cdn.jsdelivr.net/npm/@iconify-json/${p}@${v}/${f}`;
+const NAME = Object.fromEntries(SETS.flatMap(g => g[1]).map(s => [s[0], s[1]]));
+const META = Object.fromEntries(SETS.flatMap(g => g[1]).map(s => [s[0], s]));
+const $ = id => document.getElementById(id);
+const CACHE = {};   // prefix -> {version, license, icons:[{name, w, h, left, top, body}]}
+let ROWS = [], built = null;
+
+// UI: framework picker
+const tagHtml = t => (t.includes('O') ? '<em class="tag o">Outlook</em>' : '') + (t.includes('P') ? '<em class="tag p">PPT</em>' : '');
+$('fw').innerHTML = SETS.map(([g, list]) => `<div class="grp">${g}</div>` + list.map(([p, n, count, tags, style, hint]) =>
+  `<label title="${hint}"><input type="checkbox" value="${p}" data-tags="${tags}"${DEFAULT_ON.includes(p) ? ' checked' : ''}>
+     <span class="fwn"><span class="fwt">${n} ${tagHtml(tags)}</span><span class="hint">${style} · ${hint}</span></span>
+     <small id="n-${p}">${count.toLocaleString()}</small></label>`).join('')).join('');
+const picked = () => [...$('fw').querySelectorAll('input:checked')].map(i => i.value);
+const updSel = () => { const ps = picked(), n = ps.length;
+  const icons = ps.reduce((t, p) => t + (META[p] ? META[p][2] : (LOCAL_COUNT[p] || 0)), 0);
+  $('fwSel').textContent = n ? `${n} selected · about ${icons.toLocaleString()} icons (× 2 if exporting both colours).` : 'Select at least one framework.'; $('build').disabled = !n; };
+const LOCAL_COUNT = {};
+$('fw').addEventListener('change', updSel);
+$('fwAll').onclick = () => { $('fw').querySelectorAll('input').forEach(i => i.checked = true); updSel(); };
+const pickTag = t => { $('fw').querySelectorAll('input').forEach(i => i.checked = (i.dataset.tags || '').includes(t)); updSel(); };
+$('fwO').onclick = () => pickTag('O');
+$('fwP').onclick = () => pickTag('P');
+$('fwNone').onclick = () => { $('fw').querySelectorAll('input').forEach(i => i.checked = false); updSel(); };
+updSel();
+(() => { const cores = navigator.hardwareConcurrency || 4; const opts = [0, 2, 4, 8, 12, 16].filter(n => n <= Math.max(cores, 4));
+  const def = 0;   // measured: sprite-sheet batching on the main thread beats worker hand-off for icon-sized PNGs
+  if (!opts.includes(def)) opts.push(def);
+  opts.sort((a, b) => a - b);
+  $('threads').innerHTML = opts.map(n => `<option value="${n}"${n === def ? ' selected' : ''}>${n === 0 ? 'Off (fastest)' : n + ' threads'}</option>`).join('');
+})();
+
+const setStatus = (t, cls = '') => { const s = $('status'); s.textContent = t; s.className = 'status ' + cls; };
+const setProg = p => $('prog').style.width = (Math.min(1, p) * 100).toFixed(1) + '%';
+const toast = t => { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1400); };
+const b64 = str => { const bytes = new TextEncoder().encode(str); let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const fmtBytes = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const tick = () => new Promise(r => setTimeout(r));
+// Run fn over items with at most n tasks in flight (parallel network / encode pipeline)
+async function pool(items, n, fn) {
+  let next = 0; const out = new Array(items.length);
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, async () => {
+    while (next < items.length) { const k = next++; out[k] = await fn(items[k], k); }
+  }));
+  return out;
+}
+async function getJSON(url) { const r = await fetch(url); if (!r.ok) throw new Error(`HTTP ${r.status} for ${url}`); return r.json(); }
+
+// 1. Sources, tried in order until one works:
+//    jsDelivr API (version) + jsDelivr CDN → jsDelivr @latest → unpkg → Iconify public API → files loaded by the user
+const LOCAL = {};   // prefix -> icons.json the user loaded from disk
+const SOURCES = [
+  ['jsDelivr API', async p => { const { version } = await getJSON(API(p)); const [data, info] = await Promise.all([getJSON(CDN(p, version, 'icons.json')), getJSON(CDN(p, version, 'info.json')).catch(() => ({}))]); return { version, data, info }; }],
+  ['jsDelivr CDN', async p => { const data = await getJSON(`https://cdn.jsdelivr.net/npm/@iconify-json/${p}@latest/icons.json`); return { version: 'latest', data, info: await getJSON(`https://cdn.jsdelivr.net/npm/@iconify-json/${p}@latest/info.json`).catch(() => ({})) }; }],
+  ['unpkg', async p => { const data = await getJSON(`https://unpkg.com/@iconify-json/${p}@latest/icons.json`); return { version: 'latest', data, info: await getJSON(`https://unpkg.com/@iconify-json/${p}@latest/info.json`).catch(() => ({})) }; }],
+  ['Iconify API', async p => {
+    const col = await getJSON(`https://api.iconify.design/collection?prefix=${p}&info=true`);
+    let names = [...(col.uncategorized || []), ...Object.values(col.categories || {}).flat()];
+    names = [...new Set(names)];
+    const data = { prefix: p, icons: {} };
+    const chunks = []; for (let i = 0; i < names.length; i += 300) chunks.push(names.slice(i, i + 300));
+    let got = 0;
+    await pool(chunks, DL_N(), async c => {
+      const part = await getJSON(`https://api.iconify.design/${p}.json?icons=${c.join(',')}`);
+      Object.assign(data.icons, part.icons); data.width ||= part.width; data.height ||= part.height;
+      got += c.length; setStatus(`Iconify API: ${p} ${got} / ${names.length}…`);
+    });
+    return { version: 'api', data, info: col.info || {} };
+  }]
+];
+let lastErrors = [];
+async function loadSet(p, withAliases) {
+  const key = p + (withAliases ? '+a' : '');
+  if (CACHE[key]) return CACHE[key];
+  let got = null; const errs = [];
+  if (LOCAL[p]) got = { version: 'local file', data: LOCAL[p], info: LOCAL[p].info || {}, src: 'local file' };
+  for (const [label, fn] of SOURCES) {
+    if (got) break;
+    try { got = await fn(p); got.src = label; }
+    catch (e) { errs.push(`${label}: ${e.message}`); }
+  }
+  if (!got) { lastErrors.push(`${NAME[p] || p} → ${errs.join(' | ')}`); throw new Error('all sources failed'); }
+  const { version, data, info } = got;
+  const W = data.width || 16, H = data.height || 16;
+  const icons = Object.entries(data.icons).filter(([, i]) => !i.hidden).map(([name, i]) => ({
+    name, body: i.body, w: i.width || W, h: i.height || H, left: i.left || 0, top: i.top || 0 }));
+  if (withAliases && data.aliases) {
+    const byName = Object.fromEntries(icons.map(i => [i.name, i]));
+    for (const [alias, a] of Object.entries(data.aliases)) {
+      const src = byName[a.parent];
+      if (src && !a.rotate && !a.hFlip && !a.vFlip && !a.hidden) icons.push({ ...src, name: alias });
+    }
+  }
+  icons.sort((a, b) => a.name.localeCompare(b.name));
+  const lic = info.license || {};
+  return CACHE[key] = { prefix: p, version, src: got.src, license: lic.spdx || lic.title || '', icons };
+}
+
+// Offline: load icons.json files (from npm @iconify-json/<set> or a download) instead of the network
+$('localFiles').addEventListener('change', async e => {
+  const loaded = [];
+  for (const f of e.target.files) {
+    try {
+      const j = JSON.parse(await f.text());
+      if (!j.prefix || !j.icons) throw new Error('not an Iconify icons.json');
+      LOCAL[j.prefix] = j; NAME[j.prefix] ||= j.info?.name || j.prefix; LOCAL_COUNT[j.prefix] = Object.keys(j.icons).length;
+      Object.keys(CACHE).filter(k => k.startsWith(j.prefix + '+') || k === j.prefix).forEach(k => delete CACHE[k]);
+      let box = $('fw').querySelector(`input[value="${j.prefix}"]`);
+      if (!box) { $('fw').insertAdjacentHTML('beforeend', `<label><input type="checkbox" value="${j.prefix}"><span>${NAME[j.prefix]}</span><small id="n-${j.prefix}">${j.prefix}</small></label>`); box = $('fw').querySelector(`input[value="${j.prefix}"]`); }
+      box.checked = true; loaded.push(`${NAME[j.prefix]} (${Object.keys(j.icons).length})`);
+    } catch (err) { setStatus(`${f.name}: ${err.message}`, 'err'); return; }
+  }
+  updSel(); setStatus(`Loaded from disk: ${loaded.join(', ')}. Press Fetch & encode.`, 'ok');
+});
+
+// 2. Colour: replace currentColor with a solid colour; no background shape is ever added (transparent)
+function makeSvg(ic, color, size) {
+  const body = ic.body.replace(/currentColor/g, color);
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="${ic.left} ${ic.top} ${ic.w} ${ic.h}">${body}</svg>`;
+}
+// PNG pipeline. The main thread rasterises the SVG into an ImageBitmap (only the DOM can decode SVG);
+// worker threads draw it onto an OffscreenCanvas and do the PNG compression + Base64, the expensive part.
+const WORKER_SRC = `
+self.onmessage = async e => {
+  const { id, bmp, px } = e.data;
+  try {
+    const c = new OffscreenCanvas(px, px), x = c.getContext('2d');
+    x.clearRect(0, 0, px, px); x.drawImage(bmp, 0, 0, px, px); bmp.close();
+    const buf = new Uint8Array(await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer());
+    let s = ''; for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+    self.postMessage({ id, b64: btoa(s) });
+  } catch (err) { self.postMessage({ id, err: String(err) }); }
+};`;
+class WorkerPool {
+  constructor(n) {
+    const url = URL.createObjectURL(new Blob([WORKER_SRC], { type: 'text/javascript' }));
+    this.workers = Array.from({ length: n }, () => new Worker(url));
+    this.pending = new Map(); this.seq = 0; this.rr = 0;
+    this.workers.forEach(w => w.onmessage = e => { const { id, b64, err } = e.data; const p = this.pending.get(id); this.pending.delete(id); err ? p.reject(new Error(err)) : p.resolve(b64); });
+  }
+  run(bmp, px) { const id = ++this.seq; const w = this.workers[this.rr++ % this.workers.length];
+    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); w.postMessage({ id, bmp, px }, [bmp]); }); }
+  close() { this.workers.forEach(w => w.terminate()); }
+}
+const canWork = typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap !== 'undefined';
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+async function loadImg(svg) { const img = new Image(); img.src = 'data:image/svg+xml;base64,' + b64(svg); await img.decode(); return img; }
+async function svgToPng(svg, px, wp) {
+  const img = await loadImg(svg);                 // decoding runs concurrently for all in-flight tasks
+  if (wp) return wp.run(await createImageBitmap(img), px);
+  canvas.width = canvas.height = px;
+  ctx.clearRect(0, 0, px, px);                    // fully transparent canvas → alpha PNG
+  ctx.drawImage(img, 0, 0, px, px);
+  return canvas.toDataURL('image/png').split(',')[1];
+}
+// Draw many icons into one SVG sheet → one decode → slice each cell into its own transparent PNG
+async function rasterSheet(chunk, px, wp) {
+  const cols = Math.ceil(Math.sqrt(chunk.length)), rows = Math.ceil(chunk.length / cols);
+  const W = cols * px, H = rows * px, at = i => [(i % cols) * px, Math.floor(i / cols) * px];
+  const parts = chunk.map((t, i) => { const [x, y] = at(i);
+    return `<svg x="${x}" y="${y}" width="${px}" height="${px}" viewBox="${t.ic.left} ${t.ic.top} ${t.ic.w} ${t.ic.h}" overflow="hidden">${t.ic.body.replace(/currentColor/g, t.color)}</svg>`; }).join('');
+  const url = URL.createObjectURL(new Blob([`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts}</svg>`], { type: 'image/svg+xml' }));
+  const img = new Image(); img.src = url;
+  try { await img.decode(); } finally { URL.revokeObjectURL(url); }
+  const big = document.createElement('canvas'); big.width = W; big.height = H;
+  big.getContext('2d').drawImage(img, 0, 0, W, H);
+  if (wp) return Promise.all(chunk.map(async (t, i) => { const [x, y] = at(i); return wp.run(await createImageBitmap(big, x, y, px, px), px); }));
+  const c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');
+  return chunk.map((t, i) => { const [x, y] = at(i); g.clearRect(0, 0, px, px); g.drawImage(big, x, y, px, px, 0, 0, px, px); return c.toDataURL('image/png').split(',')[1]; });
+}
+const DL_N = () => +$('dlN').value || 6;
+
+function settings() {
+  return {
+    sets: picked(),
+    variant: document.querySelector('[name=variant]:checked').value,
+    fmt: document.querySelector('[name=fmt]:checked').value,
+    size: Math.max(8, Math.min(256, +$('size').value || 16)),
+    scale: +$('scale').value,
+    white: $('cWhite').value, dark: $('cDark').value,
+    prefix: $('prefix').checked, raw: $('rawsvg').checked, aliases: $('aliases').checked,
+    dlN: DL_N(), threads: +$('threads').value
+  };
+}
+const variantsOf = S => S.variant === 'both' ? ['white', 'dark'] : [S.variant];
+
+async function build() {
+  const S = settings(); if (!S.sets.length) return;
+  $('build').disabled = $('dlCsv').disabled = $('dlJson').disabled = true;
+  setProg(0);
+  try {
+    const t0 = performance.now(); lastErrors = [];
+    let fetched = 0;
+    setStatus(`Downloading ${S.sets.length} framework(s), ${Math.min(S.dlN, S.sets.length)} at a time…`);
+    const res = await pool(S.sets, S.dlN, async p => {
+      try { const s = await loadSet(p, S.aliases); $('n-' + p).textContent = s.icons.length.toLocaleString(); return s; }
+      catch (e) { return { failed: NAME[p] }; }
+      finally { fetched++; setProg(fetched / S.sets.length * 0.2); setStatus(`Downloaded ${fetched} / ${S.sets.length} framework(s)…`); }
+    });
+    const sets = res.filter(r => !r.failed), failed = res.filter(r => r.failed).map(r => r.failed);
+    const tDl = performance.now();
+    if (!sets.length) throw new Error('No framework could be downloaded');
+    const vs = variantsOf(S);
+    const mime = S.fmt === 'png' ? 'image/png' : 'image/svg+xml';
+    const px = S.size * (S.fmt === 'png' ? S.scale : 1);
+    // Build rows + one task per (icon, variant)
+    ROWS = []; const tasks = [];
+    for (const s of sets) for (const ic of s.icons) {
+      const row = { framework: NAME[s.prefix], prefix: s.prefix, version: s.version, license: s.license, name: ic.name, id: `${s.prefix}:${ic.name}` };
+      for (const v of vs) { row[v] = { color: S[v], svg: makeSvg(ic, S[v], S.size) }; tasks.push({ row, v, ic, color: S[v] }); }
+      ROWS.push(row);
+    }
+    const total = tasks.length;
+    const put = (t, data) => { t.row[t.v].base64 = data; t.row[t.v].uri = `data:${mime};base64,${data}`; };
+    let done = 0, lastPaint = 0;
+    const progress = async n => { done += n; const now = performance.now();
+      if (now - lastPaint > 120) { lastPaint = now; setProg(0.2 + done / total * 0.8); setStatus(`Encoding ${done.toLocaleString()} / ${total.toLocaleString()} images on ${threadNote}…`); await tick(); } };
+    let wp = null;
+    if (S.fmt === 'png' && S.threads > 0 && canWork) { try { wp = new WorkerPool(S.threads); } catch (_) { wp = null; } }
+    const threadNote = S.fmt !== 'png' ? 'SVG (no rasterising)' : (wp ? `${S.threads} worker threads` : 'main thread') + ', sprite-sheet batches';
+    try {
+      if (S.fmt === 'png') {
+        // Icons with internal ids (masks, gradients) could clash inside one sheet, so they render alone
+        const solo = tasks.filter(t => /\sid="/.test(t.ic.body)), batched = tasks.filter(t => !/\sid="/.test(t.ic.body));
+        const side = Math.max(1, Math.min(16, Math.floor(4096 / px)));
+        const chunks = []; for (let i = 0; i < batched.length; i += side * side) chunks.push(batched.slice(i, i + side * side));
+        await pool(chunks, wp ? 3 : 1, async chunk => {
+          let out;
+          try { out = await rasterSheet(chunk, px, wp); }
+          catch (_) { out = []; for (const t of chunk) out.push(await svgToPng(makeSvg(t.ic, t.color, px), px, null)); }
+          chunk.forEach((t, i) => put(t, out[i]));
+          await progress(chunk.length);
+        });
+        await pool(solo, 8, async t => {
+          const raster = makeSvg(t.ic, t.color, px);
+          let d; try { d = await svgToPng(raster, px, wp); } catch (_) { d = await svgToPng(raster, px, null); }
+          put(t, d); await progress(1);
+        });
+      } else {
+        for (const t of tasks) { put(t, b64(t.row[t.v].svg)); await progress(1); }
+      }
+    } finally { wp && wp.close(); }
+    const tEnd = performance.now();
+    const secs = ms => (ms / 1000).toFixed(1) + 's';
+    built = S; setProg(1);
+    $('sIcons').textContent = ROWS.length.toLocaleString();
+    $('sSets').textContent = sets.length;
+    $('sSize').textContent = fmtBytes(estimateCsv());
+    $('fFilter').innerHTML = '<option value="">All loaded</option>' + sets.map(s => `<option value="${s.prefix}">${NAME[s.prefix]} · ${s.icons.length}</option>`).join('');
+    setStatus(`Done in ${secs(tEnd - t0)} (download ${secs(tDl - t0)}, encode ${secs(tEnd - tDl)} on ${threadNote}).\nSource: ${[...new Set(sets.map(x => x.src))].join(', ')}.\n` + ` ${ROWS.length.toLocaleString()} icons × ${vs.length} variant(s), ${S.fmt.toUpperCase()} ${S.size}px${S.fmt === 'png' && S.scale > 1 ? ` @${S.scale}× (${px}px file)` : ''}, transparent background.` + (failed.length ? ` Could not load: ${failed.join(', ')}.` : ''), failed.length ? 'err' : 'ok');
+    $('dlCsv').disabled = $('dlJson').disabled = false;
+    render();
+  } catch (e) {
+    const sandboxed = location.protocol === 'about:' || window.origin === 'null' && location.protocol !== 'file:';
+    setStatus('Failed: ' + e.message + '. ' + (sandboxed
+      ? 'This page is running inside a preview that blocks network calls. Download the file and open it directly in Chrome or Edge.'
+      : 'Your network may block these CDNs. Use "Load icons.json files" below to work offline.') + (lastErrors.length ? '\nDetails: ' + lastErrors.slice(0, 3).join(' ;; ') : ''), 'err');
+  } finally { $('build').disabled = !picked().length; }
+}
+
+// 3. Exports
+const val = (cell, S) => S.prefix ? cell.uri : cell.base64;
+const esc = x => { x = String(x ?? ''); return /[",\n\r]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+function csvHead(S) {
+  const h = ['framework', 'prefix', 'name', 'icon_id', 'license', 'version', 'format', 'size_px', 'background'];
+  variantsOf(S).forEach(v => { h.push(`${v}_color`, `${v}_base64`); if (S.raw) h.push(`${v}_svg`); });
+  return h.join(',');
+}
+function csvLine(r, S) {
+  const c = [r.framework, r.prefix, r.name, r.id, r.license, r.version, S.fmt, S.size, 'transparent'];
+  variantsOf(S).forEach(v => { c.push(r[v].color, val(r[v], S)); if (S.raw) c.push(r[v].svg); });
+  return c.map(esc).join(',');
+}
+function estimateCsv() { const n = Math.min(ROWS.length, 200); let len = 0; for (let i = 0; i < n; i++) len += csvLine(ROWS[i], built).length + 2; return len / n * ROWS.length; }
+function toCSVBlob() {
+  const S = built, parts = ['﻿' + csvHead(S) + '\r\n'];
+  for (const r of ROWS) parts.push(csvLine(r, S) + '\r\n');
+  return new Blob(parts, { type: 'text/csv;charset=utf-8' });
+}
+function toJSONBlob() {
+  const S = built, vs = variantsOf(S);
+  const groups = {};
+  for (const r of ROWS) {
+    const g = groups[r.prefix] ||= { framework: r.framework, prefix: r.prefix, version: r.version, license: r.license, icons: [] };
+    const o = { name: r.name, id: r.id };
+    vs.forEach(v => { o[v] = { color: r[v].color, base64: val(r[v], S) }; if (S.raw) o[v].svg = r[v].svg; });
+    g.icons.push(o);
+  }
+  const meta = { source: 'Iconify icon sets via jsDelivr', generated: new Date().toISOString(), format: S.fmt, size_px: S.size,
+    png_scale: S.fmt === 'png' ? S.scale : null, background: 'transparent', data_uri_prefix: S.prefix, count: ROWS.length,
+    frameworks: Object.values(groups) };
+  return new Blob([JSON.stringify(meta)], { type: 'application/json' });
+}
+function save(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement('a'), { href: url, download: name });
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const fname = ext => { const s = built.sets.length === 1 ? built.sets[0] : `${built.sets.length}-frameworks`; return `icons-${s}-${built.variant}-${built.fmt}-${built.size}px-transparent.${ext}`; };
+$('dlCsv').onclick = () => { save(toCSVBlob(), fname('csv')); toast('CSV downloaded'); };
+$('dlJson').onclick = () => { save(toJSONBlob(), fname('json')); toast('JSON downloaded'); };
+
+// 4. Preview
+function render() {
+  if (!ROWS.length) return;
+  const q = $('q').value.trim().toLowerCase(), f = $('fFilter').value;
+  const hits = ROWS.filter(r => (!f || r.prefix === f) && (!q || r.name.includes(q)));
+  const show = hits.slice(0, 360);
+  $('shown').textContent = `Showing ${show.length.toLocaleString()} of ${hits.length.toLocaleString()} matches`;
+  if (!show.length) { $('grid').innerHTML = '<div class="empty">No icon matches that search.</div>'; return; }
+  $('grid').innerHTML = show.map((r, i) => {
+    const cell = v => r[v]
+      ? `<button type="button" data-i="${ROWS.indexOf(r)}" data-v="${v}" title="Copy ${v} Base64"><img alt="${r.name} ${v}" src="${r[v].uri}"></button>`
+      : `<button type="button" disabled aria-label="${v} not exported"></button>`;
+    return `<div class="tile"><div class="pair">${cell('white')}${cell('dark')}</div><div class="name" title="${r.id}"><b>${r.prefix}</b>:${r.name}</div></div>`;
+  }).join('');
+}
+$('grid').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-i]'); if (!b) return;
+  const r = ROWS[+b.dataset.i]; const text = val(r[b.dataset.v], built);
+  try { await navigator.clipboard.writeText(text); toast(`Copied ${r.id} (${b.dataset.v})`); }
+  catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast('Copied'); }
+});
+function setBg(bg) {
+  const g = $('grid');
+  g.classList.toggle('checker', bg === 'checker');
+  g.style.setProperty('--tilebg', bg === 'checker' ? '' : bg);
+  if (bg === 'checker') g.style.removeProperty('--tilebg');
+  $('bgopts').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.bg === bg));
+}
+$('bgopts').addEventListener('click', e => { const b = e.target.closest('button[data-bg]'); if (b) setBg(b.dataset.bg); });
+$('bgCustom').addEventListener('input', e => setBg(e.target.value));
+$('q').addEventListener('input', render);
+$('fFilter').addEventListener('change', render);
+$('build').onclick = build;
+</script>
+</body>
+</html>
